@@ -117,49 +117,26 @@ class SegmentStats:
         return processed_str
 
     def speeds_str(self):
-        fmt_sog = '\tSpeed over ground (kts): max: {:.1f}, avg: {:.1f}'
+        fmt_sog = '\tSOG (kts): max: {:.1f}, avg: {:.1f}'
         processed_str = fmt_sog.format(self.max_sog, self.avg_sog)
 
         if self.max_stw:
-            fmt_stw = '\n\tSpeed thru water (kts): max: {:.1f}, avg: {:.1f}'
+            fmt_stw = '\n\tSTW (kts): max: {:.1f}, avg: {:.1f}'
             processed_str = processed_str + fmt_stw.format(self.max_stw, self.avg_stw)
 
         return processed_str
 
     def wind_str(self):
         if self.max_tws:
-            fmt_stw = '\tTrue Wind Speed (kts): max: {:.1f}, avg: {:.1f}'
+            fmt_stw = '\tTWS (kts): max: {:.1f}, avg: {:.1f}'
             return fmt_stw.format(self.max_tws, self.avg_tws)
         else:
             return '\tNo wind data available'
 
     def distance_str(self):
-        base_str = '\tMoving T: {} Stopped T: {} Moving Dist: {:.2f} nm Stopped Dist: {:.2f} nm'
+        base_str = '\tMoving T: {} Stopped T: {}\n\tMoving D: {:.2f} nm Stopped D: {:.2f} nm'
         return base_str.format(str(self.moving_time), str(self.stopped_time), self.moving_distance,
                                self.stopped_distance)
-
-
-# https://ocefpaf.github.io/python4oceanographers/blog/2014/08/18/gpx/
-def main():
-    fn = rt_args.select_data_file()
-
-    speed_pct_ignore = int(input('Pct of top speeds to ignore (0 - 50, recommended: 5) : '))
-    speed_pct_ignore = min(max(speed_pct_ignore, 0), 50) / 100.0
-
-    gpx: GPX = gpxpy.parse(open(rt_args.DATA_SOURCE_DIR + fn))
-
-    all_segments: list[GPXTrackSegment] = []
-    for t in gpx.tracks:
-        all_segments.extend(t.segments)
-
-    for seg in all_segments:
-        if seg.points[0].time > seg.points[1].time:
-            seg.points.reverse()
-
-        # skip segments w/ distance < 10m, or shorter than 10 minutes
-        if seg.length_2d() > 10.0 and seg.get_duration() > 600:
-            print_segment_stats(seg, speed_pct_ignore)
-            print('\tEngine Hours:')
 
 
 def m_to_nm(m: float) -> float:
@@ -183,10 +160,9 @@ def str_remove_units(s: str) -> float:
 
 
 def print_segment_stats(seg: GPXTrackSegment, speed_pct_ignore: float):
-    print('')
-
     stats = get_segment_stats(seg, speed_pct_ignore)
-    print(stats.summary_str())
+
+    print('\n' + stats.summary_str())
     print(stats.distance_str())
     print(stats.speeds_str())
     print(stats.wind_str())
@@ -240,6 +216,28 @@ def get_segment_stats(seg: GPXTrackSegment, extreemes_percentile=0.05) -> Segmen
     return SegmentStats(s_date, start_t, moving_t, stopped_t, moving_nm, stopped_nm, num_pts,
                         max_sog, avg_sog, max_stw, avg_stw, max_tws, avg_tws)
 
+
+# https://ocefpaf.github.io/python4oceanographers/blog/2014/08/18/gpx/
+def main():
+    fn = rt_args.select_data_file()
+
+    speed_pct_ignore = int(input('Pct of top speeds to ignore (0 - 50, recommended: 5) : '))
+    speed_pct_ignore = min(max(speed_pct_ignore, 0), 50) / 100.0
+
+    gpx: GPX = gpxpy.parse(open(rt_args.DATA_SOURCE_DIR + fn))
+
+    all_segments: list[GPXTrackSegment] = []
+    for t in gpx.tracks:
+        all_segments.extend(t.segments)
+
+    for seg in all_segments:
+        if seg.points[0].time > seg.points[1].time:
+            seg.points.reverse()
+
+        # skip segments w/ distance < 10m, or shorter than 10 minutes
+        if seg.length_2d() > 10.0 and seg.get_duration() > 600:
+            print_segment_stats(seg, speed_pct_ignore)
+            print('\tEngine Hours:')
 
 if __name__ == '__main__':
     main()
