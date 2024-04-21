@@ -18,7 +18,7 @@ track_stats.py
 
     Date: 2024-04-17, Start T: 15:39:30, Points: 90
 	    Moving T: 0:29:30 Stopped T: 0:12:00 Moving Dist: 2.13 nm Stopped Dist: 0.02 nm
-        Speed over ground (kts): max: 5.4, avg: 3.1
+            Speed over ground (kts): max: 5.4, avg: 3.1
 	    Speed thru water (kts): max: 5.9, avg: 3.1
 	    True Wind Speed (kts): max: 8.5, avg: 5.8
 
