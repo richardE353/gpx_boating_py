@@ -4,6 +4,8 @@ import gpxpy
 from gpxpy.gpx import GPX
 
 import common as rt_args
+from track_stats import get_speed_pct_to_ignore, analyze_track_segments
+
 
 def main():
     reversed = False
@@ -29,6 +31,8 @@ def main():
     else:
         print('All tracks correct order.  No action taken.')
 
+    pct_to_ignore = get_speed_pct_to_ignore()
+    analyze_track_segments(gpx, pct_to_ignore)
 
 if __name__ == '__main__':
     main()
