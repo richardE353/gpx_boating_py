@@ -12,15 +12,19 @@ There are currently 2 different scripts.  They are as follows:
 
 track_stats.py
     Lets you specify which .gpx file to analyze, then analyzes each track segment and outputs information about them.
-    It reads the <cmt> element to extract depth, wind, and speed data when present.
+    It reads the <cmt> element to extract depth, wind, and speed data when present.  The extra data is typically
+    included in Yacht Devices server exports.
 
     Sample output:
 
-    Date: 2024-04-17, Start T: 15:39:30, Points: 90
-	    Moving T: 0:29:30 Stopped T: 0:12:00 Moving Dist: 2.13 nm Stopped Dist: 0.02 nm
-            Speed over ground (kts): max: 5.4, avg: 3.1
-	    Speed thru water (kts): max: 5.9, avg: 3.1
-	    True Wind Speed (kts): max: 8.5, avg: 5.8
+    Date: 2024-04-17, Start T: 15:39:30, Points: 87
+	    Moving T: 0:29:30 Stopped T: 0:10:30
+	    Moving D: 2.13 nm Stopped D: 0.02 nm
+	    SOG (kts): max: 5.3, avg: 3.2
+	    STW (kts): max: 5.9, avg: 3.2
+	    TWS (kts): max: 8.5, avg: 5.8
+	    Avg Wind dir: 314.8°
+
 
 flip_point_order.py
     Detects if any track segment has its points ordered with the most recent point first, and flips them into ascending
