@@ -145,8 +145,8 @@ class PointExtension:
 class SegmentStats:
     start_date: Optional[date]
     start_time: Optional[datetime]
-    moving_time: float
-    stopped_time: float
+    moving_time: timedelta
+    stopped_time: timedelta
     moving_distance: float
     stopped_distance: float
     num_pts: int
@@ -252,6 +252,17 @@ def calculate_wind_averages(p_extensions: list[PointExtension]) -> (float, float
     return (degrees_dir, avg_spd)
 
 
+def remove_stationary_pts(seg: GPXTrackSegment) -> GPXTrackSegment:
+    # filter out all points with SOG of 0.  This is to handle leaving instruments on for anchor alarm
+    p_extensions = list(map(lambda p: PointExtension(p), seg.points))
+    moving_pts = list(filter(lambda pe: (pe.stw is not None) and (pe.stw > 0.8), p_extensions))
+    culled_pts = list(map(lambda pe: pe.source, moving_pts))
+
+    new_seg = GPXTrackSegment(culled_pts)
+
+    return new_seg
+
+
 def get_segment_stats(seg: GPXTrackSegment, extreemes_percentile=0.05) -> SegmentStats:
     t_bounds = seg.get_time_bounds()
     if t_bounds[0] is not None:
@@ -269,7 +280,10 @@ def get_segment_stats(seg: GPXTrackSegment, extreemes_percentile=0.05) -> Segmen
     p_extensions = list(map(lambda p: PointExtension(p), seg.points))
     stw = list(filter(lambda s: (s is not None), (map(lambda pe: pe.stw, p_extensions))))
 
-    speed_units = p_extensions[0].speed_units()
+    if len(p_extensions) > 0:
+        speed_units = p_extensions[0].speed_units()
+    else:
+        speed_units = 'kts'
 
     if speed_units == 'kts':
         max_sog = mps_to_knots(max_spd)
@@ -291,8 +305,12 @@ def get_segment_stats(seg: GPXTrackSegment, extreemes_percentile=0.05) -> Segmen
 
         tw_data = list(filter(lambda pe: (pe.tws is not None) and (pe.twd is not None), p_extensions))
 
-        max_tws = max(map(lambda pe: pe.tws, tw_data))
-        avg_tws = sum(map(lambda pe: pe.tws, tw_data)) / len(tw_data)
+        if len(tw_data):
+            max_tws = max(map(lambda pe: pe.tws, tw_data))
+            avg_tws = sum(map(lambda pe: pe.tws, tw_data)) / len(tw_data)
+        else:
+            max_tws = None
+            avg_tws = None
 
         (avg_wind_dir, avg_wind_speed) = calculate_wind_averages(tw_data)
 
@@ -314,6 +332,11 @@ def analyze_track_segments(gpx, speed_pct_ignore):
         # skip segments w/ distance < 10m, or shorter than 10 minutes
         if seg.length_2d() > 10.0 and seg.get_duration() > 600:
             print_segment_stats(seg, speed_pct_ignore)
+
+            # exploratory to study removing pts where stw is 0
+            # filtered_seg = remove_stationary_pts(seg)
+            # if filtered_seg.length_2d() > 10.0:
+            #     print_segment_stats(filtered_seg, speed_pct_ignore)
 
 
 def get_speed_pct_to_ignore():

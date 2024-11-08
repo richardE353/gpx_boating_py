@@ -1,4 +1,3 @@
-
 import gpxpy
 
 from gpxpy.gpx import GPX
@@ -33,6 +32,7 @@ def main():
 
     pct_to_ignore = get_speed_pct_to_ignore()
     analyze_track_segments(gpx, pct_to_ignore)
+
 
 if __name__ == '__main__':
     main()
