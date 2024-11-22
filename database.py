@@ -25,6 +25,9 @@ class LogEntryRecord:
     def values_str(self) -> str:
         return str(astuple(self))
 
+    def path_to_image_file(self) -> str:
+        return self.path_to_gpx_file.replace('.gpx', '.png')
+
 
 @dataclass
 class TrackStats:

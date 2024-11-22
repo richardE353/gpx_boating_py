@@ -1,13 +1,16 @@
 import sqlite3
 from datetime import timedelta
 
+from PIL import Image
 import PySimpleGUI as sg
 import gpxpy
+from PIL.Image import Resampling
 from gpxpy.gpx import GPXTrackSegment, GPX
 
 import common as rt_args
 from common import get_data_files
 from database import get_entry_summaries, select_log_entry, select_log_entry_stats, create_database
+from images import load_image
 from log_entry import create_log_entry, create_track_stats, persist
 from track_stats import get_segment_stats
 
@@ -63,10 +66,10 @@ def display_log_entry():
     entry_strings = list(sorted(entries_dict.keys()))
 
     layout = [
-        [sg.Text("Log Entries:"), sg.Combo(entry_strings, key='-LE_SELECT_ENTRY-', size=(60, 1), enable_events=True)],
+        [[sg.Text("Log Entries:"), sg.Combo(entry_strings, key='-LE_SELECT_ENTRY-', size=(60, 1), enable_events=True)],
         [sg.Text("Title:"), sg.InputText(key='-LE_TITLE-')],
-        [sg.Text("Starting Loc:"), sg.InputText(key='-LE_START-'), sg.Text("Ending Loc:"),
-         sg.InputText(key='-LE_END-')],
+        [sg.Text("Starting Loc:"), sg.InputText(size=(20, 1), key='-LE_START-'), sg.Text("Ending Loc:"),
+         sg.InputText(size=(20, 1), key='-LE_END-')],
         [sg.Text("Moving Time:"), sg.Text(key='-LE_MTIME-'), sg.Text("Moving distance: (nm):"),
          sg.Text(key='-LE_MDIST-')],
         [sg.Text("Avg SOG (kts):"), sg.Text(key='-LE_ASOG-'), sg.Text("Max SOG (kts):"),
@@ -78,8 +81,10 @@ def display_log_entry():
         [sg.Text("Avg Wind Speed (kts):"), sg.Text(key='-LE_AWS-'), sg.Text("Avg Wind Dir:"),
          sg.Text(key='-LE_AWD-')],
         [sg.Text("Crew:"), sg.InputText(key='-LE_CREW-')],
-        [sg.Text("Notes:"), sg.Multiline(key='-LE_NOTES-', size=(70, 4))],
-        [sg.Button('Exit', key='-LE_EXIT-')]]
+        [sg.Text("Notes:"), sg.Multiline(key='-LE_NOTES-', size=(70, 4))]],
+        [sg.Button('Exit', key='-LE_EXIT-')],
+        [sg.Image(key="-LE_TRACK_IMAGE-", size=(900, 900))]
+        ]
 
     # Create the Window
     window = sg.Window('Log Entry Info', layout, resizable=True, font='default 12')
@@ -121,7 +126,16 @@ def display_log_entry():
 
             window['-LE_CREW-'].update(value=selected_entry.crew)
             window['-LE_NOTES-'].update(value=selected_entry.notes)
-    #            window['-LE_NOTES-'].append(selected_entry.notes)
+
+            image = load_image('./2024_images', selected_entry.path_to_image_file())
+
+            if image:
+                image = image.resize((620, 620), resample=Resampling.LANCZOS)
+
+                import io
+                bio = io.BytesIO()
+                image.save(bio, format="PNG")
+                window["-LE_TRACK_IMAGE-"].update(data=bio.getvalue())
 
     con.close()
     window.close()
