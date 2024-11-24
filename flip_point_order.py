@@ -1,5 +1,6 @@
-import gpxpy
+import os
 
+import gpxpy
 from gpxpy.gpx import GPX
 
 import common as rt_args
@@ -11,7 +12,7 @@ def main():
 
     fn = rt_args.select_data_file()
 
-    gpx: GPX = gpxpy.parse(open(rt_args.DATA_SOURCE_DIR + fn))
+    gpx: GPX = gpxpy.parse(open(rt_args.get_file_loc(fn)))
 
     all_segments = []
     for t in gpx.tracks:

@@ -1,3 +1,4 @@
+import os
 from typing import Tuple, Optional
 from PIL import Image
 from staticmap import Line
@@ -10,16 +11,6 @@ import common as rt_args
 # https://www.blog.pythonlibrary.org/2021/02/16/creating-an-image-viewer-with-pysimplegui/
 
 
-def test_track():
-    fn = rt_args.select_data_file()
-    import gpxpy
-    gpx: GPX = gpxpy.parse(open(rt_args.DATA_SOURCE_DIR + fn))
-
-    a_seg = gpx.tracks[0].segments[0]
-    seg_image = segment_image(a_seg)
-    seg_image.save('segment_test.png')
-
-
 def create_image_files():
     import sqlite3
 
@@ -30,13 +21,13 @@ def create_image_files():
 
     for r in recs:
         import gpxpy
-        gpx: GPX = gpxpy.parse(open(rt_args.DATA_SOURCE_DIR + r[0]))
+        gpx: GPX = gpxpy.parse(open(rt_args.get_file_loc(r[0])))
 
         a_seg = gpx.tracks[0].segments[0]
         seg_image = segment_image(a_seg)
 
         image_name = r[0].replace('.gpx', '.png')
-        seg_image.save('./2024_images/' + image_name)
+        seg_image.save(rt_args.TRACK_IMAGES_DIR + os.sep + image_name)
 
     con.close()
 
@@ -60,10 +51,10 @@ def segment_image(s: GPXTrackSegment) -> Image:
     return m.render()
 
 
-def load_image(dir: str, fn: str) -> Optional[Image]:
+def load_image(fn: str) -> Optional[Image]:
     import os
 
-    full_path = dir + '/' + fn
+    full_path = rt_args.get_file_loc(fn)
     if os.path.exists(full_path):
         image = Image.open(full_path)
         return image

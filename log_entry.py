@@ -1,5 +1,4 @@
 import sqlite3
-from dataclasses import astuple
 from sqlite3 import Connection
 from typing import Optional
 
@@ -58,7 +57,7 @@ def select_and_process_file():
 
 
 def process_selected_file(fn: str, speed_pct_ignore: float):
-    gpx: GPX = gpxpy.parse(open(rt_args.DATA_SOURCE_DIR + fn))
+    gpx: GPX = gpxpy.parse(open(rt_args.get_file_loc(fn)))
 
     all_segments: list[GPXTrackSegment] = []
     for t in gpx.tracks:
@@ -73,7 +72,7 @@ def process_selected_file(fn: str, speed_pct_ignore: float):
         if seg.length_2d() > 10.0 and seg.get_duration() > 600:
             stats = get_segment_stats(seg, speed_pct_ignore)
 
-            new_entry = input_log_entry(rt_args.DATA_SOURCE_DIR + fn, seg, speed_pct_ignore)
+            new_entry = input_log_entry(rt_args.DATA_DIR + fn, seg, speed_pct_ignore)
             trk_stats = create_track_stats(new_entry, stats, speed_pct_ignore)
 
             con = sqlite3.connect(rt_args.DATABASE_LOC)

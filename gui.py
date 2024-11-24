@@ -1,18 +1,20 @@
 import sqlite3
 from datetime import timedelta
 
-from PIL import Image
 import PySimpleGUI as sg
 import gpxpy
 from PIL.Image import Resampling
+from PySimpleGUI import Tab, TabGroup
 from gpxpy.gpx import GPXTrackSegment, GPX
 
 import common as rt_args
 from common import get_data_files
 from database import get_entry_summaries, select_log_entry, select_log_entry_stats, create_database
-from images import load_image
+from images import load_image, segment_image
 from log_entry import create_log_entry, create_track_stats, persist
 from track_stats import get_segment_stats
+
+IMAGE_SIZE = (440, 440)
 
 
 def process_args(values: dict, seg: GPXTrackSegment):
@@ -32,9 +34,13 @@ def process_args(values: dict, seg: GPXTrackSegment):
     persist(new_entry, trk_stats, con)
     con.close()
 
+    img = segment_image(seg)
+    image_name = fn.replace('.gpx', '.png')
+    img.save(rt_args.get_file_loc(image_name))
+
 
 def extract_segments(fn):
-    gpx: GPX = gpxpy.parse(open(rt_args.DATA_SOURCE_DIR + fn))
+    gpx: GPX = gpxpy.parse(open(rt_args.get_file_loc(fn)))
     all_segments: list[GPXTrackSegment] = []
     for t in gpx.tracks:
         for s in t.segments:
@@ -48,97 +54,52 @@ def extract_segments(fn):
     return all_segments
 
 
-def nullable_float_as_str(fmt: str, v: float) -> str:
-    if v == None:
+def nullable_float_as_str(fmt: str, v: float, units='') -> str:
+    if v is None:
         return "unknown"
     else:
-        return str.format(fmt, v)
+        return str.format(fmt, v) + ' ' + units
 
 
-def display_log_entry():
-    con = sqlite3.connect(rt_args.DATABASE_LOC)
-    summaries = get_entry_summaries(con)
+def update_track_tab_entries(window, entries_dict, values, con):
+    selected_id = entries_dict[values['-TT_SELECT_ENTRY-']].start_timestamp
+    selected_entry = select_log_entry(selected_id, con)
+    selected_stats = select_log_entry_stats(selected_id, con)
 
-    entries_dict = {}
-    for s in summaries:
-        entries_dict[s.summary_string()] = s
+    window['-TT_TITLE-'].update(value=selected_entry.title)
+    window['-TT_START-'].update(value=selected_entry.start_loc)
+    window['-TT_END-'].update(value=selected_entry.end_loc)
+    window['-TT_MTIME-'].update(value=timedelta(seconds=int(selected_stats.moving_seconds)))
+    window['-TT_MDIST-'].update(value=str.format('{:.2f}', selected_stats.moving_distance) + ' nm')
 
-    entry_strings = list(sorted(entries_dict.keys()))
+    window['-TT_ASOG-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.sog_avg, 'kts'))
+    window['-TT_MSOG-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.sog_max, 'kts'))
 
-    layout = [
-        [[sg.Text("Log Entries:"), sg.Combo(entry_strings, key='-LE_SELECT_ENTRY-', size=(60, 1), enable_events=True)],
-        [sg.Text("Title:"), sg.InputText(key='-LE_TITLE-')],
-        [sg.Text("Starting Loc:"), sg.InputText(size=(20, 1), key='-LE_START-'), sg.Text("Ending Loc:"),
-         sg.InputText(size=(20, 1), key='-LE_END-')],
-        [sg.Text("Moving Time:"), sg.Text(key='-LE_MTIME-'), sg.Text("Moving distance: (nm):"),
-         sg.Text(key='-LE_MDIST-')],
-        [sg.Text("Avg SOG (kts):"), sg.Text(key='-LE_ASOG-'), sg.Text("Max SOG (kts):"),
-         sg.Text(key='-LE_MSOG-')],
-        [sg.Text("Avg STW (kts):"), sg.Text(key='-LE_ASTW-'), sg.Text("Max STW (kts):"),
-         sg.Text(key='-LE_MSTW-')],
-        [sg.Text("Avg True Wind (kts):"), sg.Text(key='-LE_ATW-'), sg.Text("Max True Wind (kts):"),
-         sg.Text(key='-LE_MTW-')],
-        [sg.Text("Avg Wind Speed (kts):"), sg.Text(key='-LE_AWS-'), sg.Text("Avg Wind Dir:"),
-         sg.Text(key='-LE_AWD-')],
-        [sg.Text("Crew:"), sg.InputText(key='-LE_CREW-')],
-        [sg.Text("Notes:"), sg.Multiline(key='-LE_NOTES-', size=(70, 4))]],
-        [sg.Button('Exit', key='-LE_EXIT-')],
-        [sg.Image(key="-LE_TRACK_IMAGE-", size=(900, 900))]
-        ]
+    window['-TT_ASTW-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.stw_avg, 'kts'))
+    window['-TT_MSTW-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.stw_max, 'kts'))
 
-    # Create the Window
-    window = sg.Window('Log Entry Info', layout, resizable=True, font='default 12')
+    window['-TT_ATW-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.tws_avg, 'kts'))
+    window['-TT_MTW-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.tws_max, 'kts'))
 
-    # Event Loop to process "events" and get the "values" of the inputs
-    while True:
-        event, values = window.read()
+    window['-TT_AWS-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.avg_wind_spd, 'kts'))
 
-        # if user closes window or clicks cancel
-        if event == sg.WIN_CLOSED or event == '-LE_EXIT-':
-            break
+    wind_dir = nullable_float_as_str('{:.1f}', selected_stats.avg_wind_dir)
+    if wind_dir != 'unknown':
+        wind_dir = wind_dir + '°'
+    window['-TT_AWD-'].update(value=wind_dir)
 
-        if event == '-LE_SELECT_ENTRY-':
-            selected_id = entries_dict[values['-LE_SELECT_ENTRY-']].start_timestamp
-            selected_entry = select_log_entry(selected_id, con)
-            selected_stats = select_log_entry_stats(selected_id, con)
+    window['-TT_CREW-'].update(value=selected_entry.crew)
+    window['-TT_NOTES-'].update(value=selected_entry.notes)
 
-            window['-LE_TITLE-'].update(value=selected_entry.title)
-            window['-LE_START-'].update(value=selected_entry.start_loc)
-            window['-LE_END-'].update(value=selected_entry.end_loc)
-            window['-LE_MTIME-'].update(value=timedelta(seconds=int(selected_stats.moving_seconds)))
-            window['-LE_MDIST-'].update(value=str.format('{:.2f}', selected_stats.moving_distance))
+    image = load_image(selected_entry.path_to_image_file())
 
-            window['-LE_ASOG-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.sog_avg))
-            window['-LE_MSOG-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.sog_max))
+    if image:
+        image = image.resize(IMAGE_SIZE, resample=Resampling.LANCZOS)
 
-            window['-LE_ASTW-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.stw_avg))
-            window['-LE_MSTW-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.stw_max))
-
-            window['-LE_ATW-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.tws_avg))
-            window['-LE_MTW-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.tws_max))
-
-            window['-LE_AWS-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.avg_wind_spd))
-
-            wind_dir = nullable_float_as_str('{:.1f}', selected_stats.avg_wind_dir)
-            if wind_dir != 'unknown':
-                wind_dir = wind_dir + '°'
-            window['-LE_AWD-'].update(value=wind_dir)
-
-            window['-LE_CREW-'].update(value=selected_entry.crew)
-            window['-LE_NOTES-'].update(value=selected_entry.notes)
-
-            image = load_image('./2024_images', selected_entry.path_to_image_file())
-
-            if image:
-                image = image.resize((620, 620), resample=Resampling.LANCZOS)
-
-                import io
-                bio = io.BytesIO()
-                image.save(bio, format="PNG")
-                window["-LE_TRACK_IMAGE-"].update(data=bio.getvalue())
-
-    con.close()
-    window.close()
+        import io
+        bio = io.BytesIO()
+        image.save(bio, format="PNG")
+        window["-TT_TRACK_IMAGE-"].update(data=bio.getvalue())
 
 
 def process_gpx_file() -> bool:
@@ -190,12 +151,50 @@ def process_gpx_file() -> bool:
     return return_val
 
 
-def main_window():
-    layout = [[sg.Text('GPX File processing and Review App')],
-              [sg.Button('New Entry', key='-NEW_TRACK-'), sg.Button('View Entries', key='-VIEW_ENTRIES-')],
-              [sg.Button('Exit')]]
+def create_track_tab(entries_dict) -> Tab:
+    entry_strings = list(sorted(entries_dict.keys()))
 
-    window = sg.Window('Boat Log', layout, resizable=True, font='default 12')
+    stats_col = sg.Column(vertical_alignment='top', layout=[[sg.Text("Moving Time:"), sg.Text(key='-TT_MTIME-')],
+                                                            [sg.Text("Moving distance:"),
+                                                             sg.Text(key='-TT_MDIST-')],
+                                                            [sg.Text("Avg SOG:"), sg.Text(key='-TT_ASOG-')],
+                                                            [sg.Text("Max SOG:"), sg.Text(key='-TT_MSOG-')],
+                                                            [sg.Text("Avg STW:"), sg.Text(key='-TT_ASTW-')],
+                                                            [sg.Text("Max STW:"), sg.Text(key='-TT_MSTW-')],
+                                                            [sg.Text("Avg True Wind:"), sg.Text(key='-TT_ATW-')],
+                                                            [sg.Text("Max True Wind:"), sg.Text(key='-TT_MTW-')],
+                                                            [sg.Text("Avg Wind Speed:"), sg.Text(key='-TT_AWS-')],
+                                                            [sg.Text("Avg Wind Dir:"), sg.Text(key='-TT_AWD-')]])
+    t_layout = [
+        [sg.Text("Log Entries:"), sg.Combo(entry_strings, key='-TT_SELECT_ENTRY-', size=(60, 1), enable_events=True),
+         sg.Button('New', key='-TT_NEW-')],
+        [sg.Text("Title:"), sg.InputText(key='-TT_TITLE-')],
+        [sg.Text("Starting Loc:"), sg.InputText(size=(20, 1), key='-TT_START-'), sg.Text("Ending Loc:"),
+         sg.InputText(size=(20, 1), key='-TT_END-')],
+        [sg.Text("Crew:"), sg.InputText(key='-TT_CREW-')],
+        [sg.Text("Notes:"), sg.Multiline(key='-TT_NOTES-', size=(70, 4))],
+        [stats_col, sg.Image(key="-TT_TRACK_IMAGE-", size=IMAGE_SIZE)]]
+
+    return Tab(title='Tracks', layout=t_layout)
+
+
+def create_maintenance_tab() -> Tab:
+    return Tab(title='Maintenance', layout=[[sg.Text('Visualize work log')]])
+
+
+def main_window():
+    con = sqlite3.connect(rt_args.DATABASE_LOC)
+    summaries = get_entry_summaries(con)
+
+    entries_dict = {}
+    for s in summaries:
+        entries_dict[s.summary_string()] = s
+
+    layout = [[TabGroup(enable_events=True, layout=[[create_track_tab(entries_dict), create_maintenance_tab()]])],
+              [sg.Button('Exit')],
+              ]
+
+    window = sg.Window('Boat Log', layout, resizable=False, font='default 12', size=(676, 700))
 
     # Event Loop to process "events" and get the "values" of the inputs
     while True:
@@ -205,11 +204,24 @@ def main_window():
         if event == sg.WIN_CLOSED or event == 'Exit':
             break
 
-        if event == '-NEW_TRACK-':
+        if event == '-TT_NEW-':
             process_gpx_file()
 
-        if event == '-VIEW_ENTRIES-':
-            display_log_entry()
+        if event == '-TT_SELECT_ENTRY-':
+            con = sqlite3.connect(rt_args.DATABASE_LOC)
+            summaries = get_entry_summaries(con)
+
+            entries_dict = {}
+            for s in summaries:
+                entries_dict[s.summary_string()] = s
+
+            summaries = get_entry_summaries(con)
+
+            entries_dict = {}
+            for s in summaries:
+                entries_dict[s.summary_string()] = s
+
+            update_track_tab_entries(window, entries_dict, values, con)
 
     window.close()
 

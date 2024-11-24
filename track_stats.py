@@ -348,7 +348,7 @@ def get_speed_pct_to_ignore():
 # https://ocefpaf.github.io/python4oceanographers/blog/2014/08/18/gpx/
 def main():
     fn = rt_args.select_data_file()
-    gpx: GPX = gpxpy.parse(open(rt_args.DATA_SOURCE_DIR + fn))
+    gpx: GPX = gpxpy.parse(open(rt_args.get_file_loc(fn)))
 
     speed_pct_ignore = get_speed_pct_to_ignore()
 
