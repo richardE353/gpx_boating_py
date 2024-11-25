@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import timedelta
+from typing import Optional
 
 import PySimpleGUI as sg
 import gpxpy
@@ -9,7 +10,7 @@ from gpxpy.gpx import GPXTrackSegment, GPX
 
 import common as rt_args
 from common import get_data_files
-from database import get_entry_summaries, select_log_entry, select_log_entry_stats, create_database
+from database import get_entry_summaries, select_log_entry, select_log_entry_stats, create_database, LogEntryRecord
 from images import load_image, segment_image
 from log_entry import create_log_entry, create_track_stats, persist
 from track_stats import get_segment_stats
@@ -17,26 +18,33 @@ from track_stats import get_segment_stats
 IMAGE_SIZE = (440, 440)
 
 
-def process_args(values: dict, seg: GPXTrackSegment):
+def process_args(values: dict, seg: GPXTrackSegment) -> Optional[LogEntryRecord]:
     fn = values['-SELECT_FILE-']
     title = values['-TITLE-']
     start_loc = values['-START-']
     end_loc = values['-END-']
     crew = values['-CREW-']
     notes = values['-NOTES-']
-
-    stats = get_segment_stats(seg, 0.0)
-
-    new_entry = create_log_entry(fn, seg, title, start_loc, end_loc, crew, notes)
-    trk_stats = create_track_stats(new_entry, stats, 0.0)
-
     con = sqlite3.connect(rt_args.DATABASE_LOC)
-    persist(new_entry, trk_stats, con)
-    con.close()
 
-    img = segment_image(seg)
-    image_name = fn.replace('.gpx', '.png')
-    img.save(rt_args.get_file_loc(image_name))
+    return_val = None
+
+    try:
+        stats = get_segment_stats(seg, 0.0)
+
+        new_entry = create_log_entry(fn, seg, title, start_loc, end_loc, crew, notes)
+        trk_stats = create_track_stats(new_entry, stats, 0.0)
+
+        persist(new_entry, trk_stats, con)
+
+        img = segment_image(seg)
+        image_name = fn.replace('.gpx', '.png')
+        img.save(rt_args.get_file_loc(image_name))
+        return_val = new_entry
+    finally:
+        con.close()
+
+    return return_val
 
 
 def extract_segments(fn):
@@ -63,6 +71,7 @@ def nullable_float_as_str(fmt: str, v: float, units='') -> str:
 
 def update_track_tab_entries(window, entries_dict, values, con):
     selected_id = entries_dict[values['-TT_SELECT_ENTRY-']].start_timestamp
+
     selected_entry = select_log_entry(selected_id, con)
     selected_stats = select_log_entry_stats(selected_id, con)
 
@@ -102,8 +111,8 @@ def update_track_tab_entries(window, entries_dict, values, con):
         window["-TT_TRACK_IMAGE-"].update(data=bio.getvalue())
 
 
-def process_gpx_file() -> bool:
-    return_val = False
+def process_gpx_file() -> Optional[LogEntryRecord]:
+    return_val = None
     segments_dict = {}
 
     layout = [[sg.Text("File:"), sg.Combo(get_data_files(), key='-SELECT_FILE-', enable_events=True)],
@@ -142,9 +151,13 @@ def process_gpx_file() -> bool:
 
         if event == 'Save':
             selected_seg = segments_dict[values['-SELECT_SEG-']]
-            process_args(values, selected_seg)
-            window['-SAVE_STATUS-'].update(value='Processed ' + values['-SELECT_SEG-'])
-            return_val = True
+            new_rec = process_args(values, selected_seg)
+
+            if new_rec:
+                window['-SAVE_STATUS-'].update(value='Processed ' + values['-SELECT_SEG-'])
+                return_val = new_rec
+            else:
+                window['-SAVE_STATUS-'].update(value='Failed to process file.  No action taken')
 
     window.close()
 
@@ -196,6 +209,8 @@ def main_window():
 
     window = sg.Window('Boat Log', layout, resizable=False, font='default 12', size=(676, 700))
 
+    con = sqlite3.connect(rt_args.DATABASE_LOC)
+
     # Event Loop to process "events" and get the "values" of the inputs
     while True:
         event, values = window.read()
@@ -205,25 +220,44 @@ def main_window():
             break
 
         if event == '-TT_NEW-':
-            process_gpx_file()
+            new_rec = process_gpx_file()
+
+            if new_rec:
+                entries_dict = create_entry_summary_dict(con)
+                new_selected_key = get_new_entries_key(entries_dict, new_rec)
+
+                window['-TT_SELECT_ENTRY-'].update(value=new_selected_key)
+                values['-TT_SELECT_ENTRY-'] = new_selected_key
+
+                update_track_tab_entries(window, entries_dict, values, con)
 
         if event == '-TT_SELECT_ENTRY-':
-            con = sqlite3.connect(rt_args.DATABASE_LOC)
-            summaries = get_entry_summaries(con)
-
-            entries_dict = {}
-            for s in summaries:
-                entries_dict[s.summary_string()] = s
-
-            summaries = get_entry_summaries(con)
-
-            entries_dict = {}
-            for s in summaries:
-                entries_dict[s.summary_string()] = s
-
+            entries_dict = create_entry_summary_dict(con)
             update_track_tab_entries(window, entries_dict, values, con)
 
     window.close()
+
+
+def get_new_entries_key(entries_dict, new_rec):
+    key_start = new_rec.date + ': ' + new_rec.title
+    new_selected_key = None
+    for item in entries_dict.keys():
+        if item.startswith(key_start):
+            new_selected_key = item
+
+    return new_selected_key
+
+
+def create_entry_summary_dict(con):
+    summaries = get_entry_summaries(con)
+    entries_dict = {}
+    for s in summaries:
+        entries_dict[s.summary_string()] = s
+    summaries = get_entry_summaries(con)
+    entries_dict = {}
+    for s in summaries:
+        entries_dict[s.summary_string()] = s
+    return entries_dict
 
 
 def initialize_and_startup():
