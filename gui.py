@@ -19,31 +19,41 @@ IMAGE_SIZE = (440, 440)
 
 
 def process_args(values: dict, seg: GPXTrackSegment) -> Optional[LogEntryRecord]:
-    fn = values['-SELECT_FILE-']
+    file_name = values['-SELECT_FILE-']
     title = values['-TITLE-']
     start_loc = values['-START-']
     end_loc = values['-END-']
     crew = values['-CREW-']
     notes = values['-NOTES-']
+
+    return_val = persist_track_data(crew, end_loc, file_name, notes, seg, start_loc, title)
+
+    create_and_save_image(file_name, seg)
+
+    return return_val
+
+
+def create_and_save_image(fn, seg):
+    img = segment_image(seg)
+    image_name = fn.replace('.gpx', '.png')
+    img.save(rt_args.get_file_loc(image_name))
+
+    return img
+
+
+def persist_track_data(crew, end_loc, file_name, notes, seg, start_loc, title) -> Optional[LogEntryRecord]:
     con = sqlite3.connect(rt_args.DATABASE_LOC)
-
     return_val = None
-
     try:
         stats = get_segment_stats(seg, 0.0)
 
-        new_entry = create_log_entry(fn, seg, title, start_loc, end_loc, crew, notes)
+        new_entry = create_log_entry(file_name, seg, title, start_loc, end_loc, crew, notes)
         trk_stats = create_track_stats(new_entry, stats, 0.0)
 
         persist(new_entry, trk_stats, con)
-
-        img = segment_image(seg)
-        image_name = fn.replace('.gpx', '.png')
-        img.save(rt_args.get_file_loc(image_name))
         return_val = new_entry
     finally:
         con.close()
-
     return return_val
 
 
@@ -101,6 +111,16 @@ def update_track_tab_entries(window, entries_dict, values, con):
     window['-TT_NOTES-'].update(value=selected_entry.notes)
 
     image = load_image(selected_entry.path_to_image_file())
+    if not image:
+        file_name = selected_entry.path_to_gpx_file
+        selected_seg = None
+        segs = extract_segments(file_name)
+
+        desired_timestamp = selected_entry.start_timestamp
+        matches = list(filter(lambda s: int(s.get_time_bounds().start_time.timestamp()) == desired_timestamp, segs))
+
+        if matches:
+            image = create_and_save_image(file_name, matches[0])
 
     if image:
         image = image.resize(IMAGE_SIZE, resample=Resampling.LANCZOS)
@@ -108,6 +128,7 @@ def update_track_tab_entries(window, entries_dict, values, con):
         import io
         bio = io.BytesIO()
         image.save(bio, format="PNG")
+
         window["-TT_TRACK_IMAGE-"].update(data=bio.getvalue())
 
 

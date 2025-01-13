@@ -15,22 +15,31 @@ def persist(entry: LogEntryRecord, stats: TrackStats, con: Connection):
     add_to_database(stats.table_name(), stats.values_str(), con)
 
 
-def input_log_entry(gpx_loc: str, seg: GPXTrackSegment, speed_pct_ignore: float) -> Optional[LogEntryRecord]:
+def input_log_entry(gpx_file_name: str, seg: GPXTrackSegment, speed_pct_ignore: float) -> Optional[LogEntryRecord]:
     title = input('Entry Title : ')
     start_loc = input('Starting Location :')
     end_loc = input('End Location :')
     crew = input('Crew : ')
-    notes = input('Notes: ')
 
-    return create_log_entry(gpx_loc, seg, title, start_loc, end_loc, crew, notes)
+    print("Notes: ")
+    lines = []
+    while True:
+        line = input()
+        if not line:
+            break
+        lines.append(line)
+
+    notes = '\n'.join(lines)
+
+    return create_log_entry(gpx_file_name, seg, title, start_loc, end_loc, crew, notes)
 
 
-def create_log_entry(gpx_loc: str, seg: GPXTrackSegment, title: str, start_loc: str, end_loc: str, crew: str,
+def create_log_entry(gpx_file_name: str, seg: GPXTrackSegment, title: str, start_loc: str, end_loc: str, crew: str,
                      notes: str) -> LogEntryRecord:
     date = str(seg.get_time_bounds().start_time.date())
     start_seconds = int(seg.get_time_bounds().start_time.timestamp())
 
-    return LogEntryRecord(start_seconds, title, date, crew, gpx_loc, start_loc, end_loc, notes)
+    return LogEntryRecord(start_seconds, title, date, crew, gpx_file_name, start_loc, end_loc, notes)
 
 
 def create_track_stats(le: LogEntryRecord, stats: SegmentStats, pct: float) -> Optional[TrackStats]:
@@ -72,7 +81,7 @@ def process_selected_file(fn: str, speed_pct_ignore: float):
         if seg.length_2d() > 10.0 and seg.get_duration() > 600:
             stats = get_segment_stats(seg, speed_pct_ignore)
 
-            new_entry = input_log_entry(rt_args.DATA_DIR + fn, seg, speed_pct_ignore)
+            new_entry = input_log_entry(fn, seg, speed_pct_ignore)
             trk_stats = create_track_stats(new_entry, stats, speed_pct_ignore)
 
             con = sqlite3.connect(rt_args.DATABASE_LOC)
