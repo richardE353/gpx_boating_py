@@ -2,10 +2,10 @@ import sqlite3
 from datetime import timedelta
 from typing import Optional
 
-import PySimpleGUI as sg
+import FreeSimpleGUI as sg
 import gpxpy
 from PIL.Image import Resampling
-from PySimpleGUI import Tab, TabGroup
+from FreeSimpleGUI import Tab, TabGroup
 from gpxpy.gpx import GPXTrackSegment, GPX
 
 import common as rt_args
@@ -16,6 +16,7 @@ from log_entry import create_log_entry, create_track_stats, persist
 from track_stats import get_segment_stats
 
 IMAGE_SIZE = (440, 440)
+entries_in_db = {}
 
 
 def process_args(values: dict, seg: GPXTrackSegment) -> Optional[LogEntryRecord]:
@@ -54,6 +55,7 @@ def persist_track_data(crew, end_loc, file_name, notes, seg, start_loc, title) -
         return_val = new_entry
     finally:
         con.close()
+
     return return_val
 
 
@@ -79,41 +81,44 @@ def nullable_float_as_str(fmt: str, v: float, units='') -> str:
         return str.format(fmt, v) + ' ' + units
 
 
-def update_track_tab_entries(window, entries_dict, values, con):
-    selected_id = entries_dict[values['-TT_SELECT_ENTRY-']].start_timestamp
+def update_track_tab_entries(window, e_dict, values, con):
+    selected_id = e_dict[values['-TT_SELECT_ENTRY-']].start_timestamp
 
     selected_entry = select_log_entry(selected_id, con)
     selected_stats = select_log_entry_stats(selected_id, con)
 
+    update_track_stat_fields(selected_entry, selected_stats, window)
+
+    window['-TT_CREW-'].update(value=selected_entry.crew)
+    window['-TT_NOTES-'].update(value=selected_entry.notes)
+
+    update_selected_image(selected_entry, window)
+
+
+def update_track_stat_fields(selected_entry, selected_stats, window):
     window['-TT_TITLE-'].update(value=selected_entry.title)
     window['-TT_START-'].update(value=selected_entry.start_loc)
     window['-TT_END-'].update(value=selected_entry.end_loc)
     window['-TT_MTIME-'].update(value=timedelta(seconds=int(selected_stats.moving_seconds)))
     window['-TT_MDIST-'].update(value=str.format('{:.2f}', selected_stats.moving_distance) + ' nm')
-
     window['-TT_ASOG-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.sog_avg, 'kts'))
     window['-TT_MSOG-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.sog_max, 'kts'))
-
     window['-TT_ASTW-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.stw_avg, 'kts'))
     window['-TT_MSTW-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.stw_max, 'kts'))
-
     window['-TT_ATW-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.tws_avg, 'kts'))
     window['-TT_MTW-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.tws_max, 'kts'))
-
     window['-TT_AWS-'].update(value=nullable_float_as_str('{:.1f}', selected_stats.avg_wind_spd, 'kts'))
-
+    
     wind_dir = nullable_float_as_str('{:.1f}', selected_stats.avg_wind_dir)
     if wind_dir != 'unknown':
         wind_dir = wind_dir + '°'
     window['-TT_AWD-'].update(value=wind_dir)
 
-    window['-TT_CREW-'].update(value=selected_entry.crew)
-    window['-TT_NOTES-'].update(value=selected_entry.notes)
 
+def update_selected_image(selected_entry, window):
     image = load_image(selected_entry.path_to_image_file())
     if not image:
         file_name = selected_entry.path_to_gpx_file
-        selected_seg = None
         segs = extract_segments(file_name)
 
         desired_timestamp = selected_entry.start_timestamp
@@ -121,7 +126,6 @@ def update_track_tab_entries(window, entries_dict, values, con):
 
         if matches:
             image = create_and_save_image(file_name, matches[0])
-
     if image:
         image = image.resize(IMAGE_SIZE, resample=Resampling.LANCZOS)
 
@@ -133,22 +137,26 @@ def update_track_tab_entries(window, entries_dict, values, con):
 
 
 def process_gpx_file() -> Optional[LogEntryRecord]:
+    DEFAULT_YEAR = '2025'
+    selected_year = DEFAULT_YEAR
+
+    def match_year(candidate) -> bool:
+        return candidate.find(selected_year) > -1
+
     return_val = None
     segments_dict = {}
 
-    layout = [[sg.Text("File:"), sg.Combo(get_data_files(), key='-SELECT_FILE-', enable_events=True)],
-              [sg.Text("Segments:"), sg.Combo([], key='-SELECT_SEG-', size=(60, 1))],
-              [sg.Text("Title:"), sg.InputText(key='-TITLE-')],
-              [sg.Text("Starting Loc:"), sg.InputText(key='-START-')],
-              [sg.Text("Ending Loc:"), sg.InputText(key='-END-')],
-              [sg.Text("Crew:"), sg.InputText(key='-CREW-')],
-              [sg.Text("Notes:"), sg.Multiline(key='-NOTES-', size=(70, 4))],
-              [sg.Button('Save'), sg.Button('Exit', key='-EXIT-'), sg.Text('', key='-SAVE_STATUS-')]]
-
-    # Create the Window
-    window = sg.Window('GPX File Import', layout, resizable=True, font='default 12')
+    window = create_process_file_window(DEFAULT_YEAR, match_year)
 
     # Event Loop to process "events" and get the "values" of the inputs
+    return_val = event_loop_for_process_gpx_file(match_year, return_val, segments_dict, window)
+
+    window.close()
+
+    return return_val
+
+
+def event_loop_for_process_gpx_file(match_year, return_val, segments_dict, window):
     while True:
         event, values = window.read()
 
@@ -156,12 +164,19 @@ def process_gpx_file() -> Optional[LogEntryRecord]:
         if event == sg.WIN_CLOSED or event == '-EXIT-':
             break
 
+        if event == '-YEAR-':
+            selected_year = values['-YEAR-']
+            window['-SELECT_FILE-'].update(values=list(filter(match_year, get_data_files())), set_to_index=0)
+
         if event == '-SELECT_FILE-':
             segments_dict = {}
             for s in extract_segments(values['-SELECT_FILE-']):
                 segments_dict[str(s.points[0].time)] = s
 
-            seg_strings = list(sorted(segments_dict.keys()))
+            all_seg_strings = sorted(segments_dict.keys())
+
+            seg_strings = list(filter(match_year, all_seg_strings))
+
             window['-SELECT_SEG-'].update(values=seg_strings, set_to_index=0)
             window['-TITLE-'].update(value='')
             window['-START-'].update(value='')
@@ -179,26 +194,31 @@ def process_gpx_file() -> Optional[LogEntryRecord]:
                 return_val = new_rec
             else:
                 window['-SAVE_STATUS-'].update(value='Failed to process file.  No action taken')
-
-    window.close()
-
     return return_val
 
 
-def create_track_tab(entries_dict) -> Tab:
-    entry_strings = list(sorted(entries_dict.keys()))
+def create_process_file_window(DEFAULT_YEAR, match_year):
+    layout = [
+        [sg.Text("Year:"), sg.InputText(DEFAULT_YEAR, key='-YEAR-', enable_events=True)],
+        [sg.Text("File:"),
+         sg.Combo(list(filter(match_year, get_data_files())), key='-SELECT_FILE-', enable_events=True)],
+        [sg.Text("Segments:"), sg.Combo([], key='-SELECT_SEG-', size=(60, 1))],
+        [sg.Text("Title:"), sg.InputText(key='-TITLE-')],
+        [sg.Text("Starting Loc:"), sg.InputText(key='-START-')],
+        [sg.Text("Ending Loc:"), sg.InputText(key='-END-')],
+        [sg.Text("Crew:"), sg.InputText(key='-CREW-')],
+        [sg.Text("Notes:"), sg.Multiline(key='-NOTES-', size=(70, 4))],
+        [sg.Button('Save'), sg.Button('Exit', key='-EXIT-'), sg.Text('', key='-SAVE_STATUS-')]]
+    # Create the Window
+    window = sg.Window('GPX File Import', layout, resizable=True, font='default 12')
+    return window
 
-    stats_col = sg.Column(vertical_alignment='top', layout=[[sg.Text("Moving Time:"), sg.Text(key='-TT_MTIME-')],
-                                                            [sg.Text("Moving distance:"),
-                                                             sg.Text(key='-TT_MDIST-')],
-                                                            [sg.Text("Avg SOG:"), sg.Text(key='-TT_ASOG-')],
-                                                            [sg.Text("Max SOG:"), sg.Text(key='-TT_MSOG-')],
-                                                            [sg.Text("Avg STW:"), sg.Text(key='-TT_ASTW-')],
-                                                            [sg.Text("Max STW:"), sg.Text(key='-TT_MSTW-')],
-                                                            [sg.Text("Avg True Wind:"), sg.Text(key='-TT_ATW-')],
-                                                            [sg.Text("Max True Wind:"), sg.Text(key='-TT_MTW-')],
-                                                            [sg.Text("Avg Wind Speed:"), sg.Text(key='-TT_AWS-')],
-                                                            [sg.Text("Avg Wind Dir:"), sg.Text(key='-TT_AWD-')]])
+
+def create_track_tab(e_dict) -> Tab:
+    entry_strings = list(sorted(e_dict.keys()))
+
+    stats_col = create_track_statistics_column()
+
     t_layout = [
         [sg.Text("Log Entries:"), sg.Combo(entry_strings, key='-TT_SELECT_ENTRY-', size=(60, 1), enable_events=True),
          sg.Button('New', key='-TT_NEW-')],
@@ -212,19 +232,35 @@ def create_track_tab(entries_dict) -> Tab:
     return Tab(title='Tracks', layout=t_layout)
 
 
+def create_track_statistics_column():
+    stats_col = sg.Column(vertical_alignment='top', layout=[[sg.Text("Moving Time:"), sg.Text(key='-TT_MTIME-')],
+                                                            [sg.Text("Moving distance:"),
+                                                             sg.Text(key='-TT_MDIST-')],
+                                                            [sg.Text("Avg SOG:"), sg.Text(key='-TT_ASOG-')],
+                                                            [sg.Text("Max SOG:"), sg.Text(key='-TT_MSOG-')],
+                                                            [sg.Text("Avg STW:"), sg.Text(key='-TT_ASTW-')],
+                                                            [sg.Text("Max STW:"), sg.Text(key='-TT_MSTW-')],
+                                                            [sg.Text("Avg True Wind:"), sg.Text(key='-TT_ATW-')],
+                                                            [sg.Text("Max True Wind:"), sg.Text(key='-TT_MTW-')],
+                                                            [sg.Text("Avg Wind Speed:"), sg.Text(key='-TT_AWS-')],
+                                                            [sg.Text("Avg Wind Dir:"), sg.Text(key='-TT_AWD-')]])
+    return stats_col
+
+
 def create_maintenance_tab() -> Tab:
     return Tab(title='Maintenance', layout=[[sg.Text('Visualize work log')]])
 
 
 def main_window():
+    global entries_in_db
+
     con = sqlite3.connect(rt_args.DATABASE_LOC)
     summaries = get_entry_summaries(con)
 
-    entries_dict = {}
     for s in summaries:
-        entries_dict[s.summary_string()] = s
+        entries_in_db[s.summary_string()] = s
 
-    layout = [[TabGroup(enable_events=True, layout=[[create_track_tab(entries_dict), create_maintenance_tab()]])],
+    layout = [[TabGroup(enable_events=True, layout=[[create_track_tab(entries_in_db), create_maintenance_tab()]])],
               [sg.Button('Exit')],
               ]
 
@@ -233,6 +269,11 @@ def main_window():
     con = sqlite3.connect(rt_args.DATABASE_LOC)
 
     # Event Loop to process "events" and get the "values" of the inputs
+    main_event_loop(con, window)
+
+
+def main_event_loop(con, window):
+    global entries_in_db
     while True:
         event, values = window.read()
 
@@ -244,25 +285,24 @@ def main_window():
             new_rec = process_gpx_file()
 
             if new_rec:
-                entries_dict = create_entry_summary_dict(con)
-                new_selected_key = get_new_entries_key(entries_dict, new_rec)
+                entries_in_db = create_entry_summary_dict(con)
+                new_selected_key = get_new_entries_key(entries_in_db, new_rec)
 
                 window['-TT_SELECT_ENTRY-'].update(value=new_selected_key)
                 values['-TT_SELECT_ENTRY-'] = new_selected_key
 
-                update_track_tab_entries(window, entries_dict, values, con)
+                update_track_tab_entries(window, entries_in_db, values, con)
 
         if event == '-TT_SELECT_ENTRY-':
-            entries_dict = create_entry_summary_dict(con)
-            update_track_tab_entries(window, entries_dict, values, con)
-
+            entries_in_db = create_entry_summary_dict(con)
+            update_track_tab_entries(window, entries_in_db, values, con)
     window.close()
 
 
-def get_new_entries_key(entries_dict, new_rec):
+def get_new_entries_key(e_dict, new_rec):
     key_start = new_rec.date + ': ' + new_rec.title
     new_selected_key = None
-    for item in entries_dict.keys():
+    for item in e_dict.keys():
         if item.startswith(key_start):
             new_selected_key = item
 
@@ -271,14 +311,15 @@ def get_new_entries_key(entries_dict, new_rec):
 
 def create_entry_summary_dict(con):
     summaries = get_entry_summaries(con)
-    entries_dict = {}
+    entries = {}
     for s in summaries:
-        entries_dict[s.summary_string()] = s
+        entries[s.summary_string()] = s
     summaries = get_entry_summaries(con)
-    entries_dict = {}
+
+    entries = {}
     for s in summaries:
-        entries_dict[s.summary_string()] = s
-    return entries_dict
+        entries[s.summary_string()] = s
+    return entries
 
 
 def initialize_and_startup():

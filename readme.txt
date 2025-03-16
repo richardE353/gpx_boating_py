@@ -1,18 +1,22 @@
 These scripts have the following required packages:
 
-    Package     |  Pip Installation command | Install Info
-    ------------+---------------------------+----------------
-    gpxpy       |   pip install gpxpy       | https://pypi.org/project/gpxpy/
-    pysimplegui |   pip install pysimplegui | https://pypi.org/project/PySimpleGUI/
+    Package       |  Pip Installation command   | Install Info
+    --------------+-----------------------------+----------------
+    gpxpy         |   pip install gpxpy         | https://pypi.org/project/gpxpy/
+    FreeSimplegui |   pip install freesimplegui | https://pypi.org/project/FreeSimpleGUI/
+    staticmap     |   pip install staticmap     |
 
 Modify common.py to specify the directory containing .gpx files to analyze, and also to specify a target directory
 for writing gpx files modified by the flip_point_order script.
 
-There are currently 3 different scripts.  They are as follows:
+There are currently 4 different scripts.  They are as follows:
 
 gui.py
     The start of a logbook application.  GPX segments are analyzed using the track_stats.py functionality, and stored in
     a SQLLite database, along with other data entered by the user.
+
+log_entry.py
+    Text entry version for creation of log entries.  Used on iPad
 
 track_stats.py
     Lets you specify which .gpx file to analyze, then analyzes each track segment and outputs information about them.
