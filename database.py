@@ -1,7 +1,6 @@
-import dataclasses
 from dataclasses import dataclass, astuple
 from sqlite3 import Connection
-from typing import Tuple, Optional, List
+from typing import Optional, List
 
 import common as rt_args
 
@@ -65,6 +64,75 @@ class LogEntrySummary:
         return self.date + ': ' + self.title + ', ' + '{:.2f}'.format(self.moving_distance) + 'nm'
 
 
+@dataclass
+class UpkeepActionRecord:
+    id: int
+    description: str
+
+    def table_name(self) -> str:
+        return 'UPKEEP_ACTION'
+
+    def values_str(self) -> str:
+        base_str = str(astuple(self))
+        return base_str.replace(', None', ', Null')
+
+
+@dataclass
+class ProviderRecord:
+    id: int
+    name: str
+    phone: str
+    email: str
+
+    def table_name(self) -> str:
+        return 'PROVIDER'
+
+    def values_str(self) -> str:
+        base_str = str(astuple(self))
+        return base_str.replace(', None', ', Null')
+
+
+@dataclass
+class MaintenanceRecord:
+    id: Optional[int]
+    service_date: str
+    work_type_id: int
+    provider_id: int
+    notes: str
+    summary: str
+    engine_hours: Optional[float]
+
+    def table_name(self) -> str:
+        return 'MAINTENANCE'
+
+    def values_str(self) -> str:
+        base_str = str(astuple(self))
+        return base_str.replace('(None,', '(Null,').replace('None)', 'Null)')
+
+
+@dataclass
+class MaintenanceRecordView:
+    id: Optional[int]
+    service_date: str
+    notes: str
+    summary: str
+    engine_hours: Optional[float]
+    action: str
+    provider: str
+
+    def info(self) -> str:
+        if self.action == 'Project':
+            return self.service_date + ' : ' + self.summary
+
+        return self.service_date
+
+MAINTENANCE_VIEW_BASE_QRY = """
+        SELECT MAINTENANCE.id, service_date, notes, summary, engine_hours, description as action, name as provider FROM MAINTENANCE
+        INNER JOIN provider on maintenance.provider_id = provider.id
+        INNER JOIN UPKEEP_ACTION on MAINTENANCE.work_type_id = UPKEEP_ACTION.id
+    """
+
+
 def add_to_database(tbl_name: str, values_str: str, con: Connection):
     stmt = "INSERT INTO " + tbl_name + " VALUES " + values_str
 
@@ -91,8 +159,68 @@ def get_entry_summaries(con: Connection) -> List[LogEntrySummary]:
     return return_val
 
 
-def select_log_summary(id: int, con: Connection) -> Optional[LogEntrySummary]:
-    qry_str = LOG_ENTRY_SUMMARY_BASE_QRY + ' WHERE start_timestamp=' + str(id)
+def get_maintenance_dates(con: Connection) -> List[str]:
+    cur = con.cursor()
+
+    cmd = 'select distinct service_date from MAINTENANCE order by service_date'
+    res = cur.execute(cmd)
+    recs = res.fetchall()
+
+    return_val = []
+    for r in recs:
+        summary = str(*r)
+        return_val.append(summary)
+
+    return return_val
+
+
+def get_action_types(con: Connection) -> List[UpkeepActionRecord]:
+    cur = con.cursor()
+
+    cmd = 'select * from UPKEEP_ACTION order by description'
+    res = cur.execute(cmd)
+    recs = res.fetchall()
+
+    return_val = []
+    for r in recs:
+        action = UpkeepActionRecord(*r)
+        return_val.append(action)
+
+    return return_val
+
+
+def get_providers(con: Connection) -> List[ProviderRecord]:
+    cur = con.cursor()
+
+    cmd = 'select * from PROVIDER order by name'
+    res = cur.execute(cmd)
+    recs = res.fetchall()
+
+    return_val = []
+    for r in recs:
+        action = ProviderRecord(*r)
+        return_val.append(action)
+
+    return return_val
+
+
+def get_maintenance_views(con: Connection, action_desc: str) -> List[MaintenanceRecordView]:
+    cur = con.cursor()
+
+    cmd = MAINTENANCE_VIEW_BASE_QRY + 'where UPKEEP_ACTION.description = ' + "'" + action_desc + "'" + ' order by service_date'
+    res = cur.execute(cmd)
+    recs = res.fetchall()
+
+    return_val = []
+    for r in recs:
+        action = MaintenanceRecordView(*r)
+        return_val.append(action)
+
+    return return_val
+
+
+def select_log_summary(an_id: int, con: Connection) -> Optional[LogEntrySummary]:
+    qry_str = LOG_ENTRY_SUMMARY_BASE_QRY + ' WHERE start_timestamp=' + str(an_id)
     cur = con.cursor()
     res = cur.execute(qry_str)
     a_rec = res.fetchone()
@@ -100,17 +228,17 @@ def select_log_summary(id: int, con: Connection) -> Optional[LogEntrySummary]:
     return LogEntrySummary(*a_rec)
 
 
-def select_log_entry(id: int, con: Connection) -> Optional[LogEntryRecord]:
+def select_log_entry(an_id: int, con: Connection) -> Optional[LogEntryRecord]:
     cur = con.cursor()
-    res = cur.execute("select * from LOG_ENTRY WHERE start_timestamp=" + str(id))
+    res = cur.execute("select * from LOG_ENTRY WHERE start_timestamp=" + str(an_id))
     a_rec = res.fetchone()
 
     return LogEntryRecord(*a_rec)
 
 
-def select_log_entry_stats(id: int, con: Connection) -> Optional[TrackStats]:
+def select_log_entry_stats(an_id: int, con: Connection) -> Optional[TrackStats]:
     cur = con.cursor()
-    res = cur.execute("select * from TRACK_STATS WHERE start_timestamp=" + str(id))
+    res = cur.execute("select * from TRACK_STATS WHERE start_timestamp=" + str(an_id))
     a_rec = res.fetchone()
 
     return TrackStats(*a_rec)
@@ -165,3 +293,68 @@ def create_database():
                 )
 
     con.close()
+
+    create_maintenance_tables()
+
+
+def create_maintenance_tables():
+    con = sqlite3.connect(rt_args.DATABASE_LOC)
+    cur = con.cursor()
+
+    cur.execute("""
+        BEGIN;
+        
+        CREATE TABLE UPKEEP_ACTION (
+            id INTEGER PRIMARY KEY
+          , description TEXT
+        );
+        
+        insert into UPKEEP_ACTION values (1, 'Change water impeller');
+        insert into UPKEEP_ACTION values (2, 'Change engine oil');
+        insert into UPKEEP_ACTION values (3, 'Change engine fuel filters');
+        insert into UPKEEP_ACTION values (4, 'Change engine air intake filter');
+        insert into UPKEEP_ACTION values (5, 'Refuel');
+        insert into UPKEEP_ACTION values (6, 'Touch up varnish');
+        insert into UPKEEP_ACTION values (7, 'Bottom paint');
+        insert into UPKEEP_ACTION values (8, 'Project');
+
+        COMMIT;   
+    """)
+
+    cur.execute("""
+        BEGIN;
+
+        CREATE TABLE PROVIDER (
+            id INTEGER PRIMARY KEY
+            , name TEXT
+            , phone TEXT
+            , email TEXT
+        );
+        
+        insert into PROVIDER values (1, 'Owner', '', '');
+        insert into PROVIDER values (2, 'Isaac Stone', '360 775-5704', 'stonmobilemarine@gmail.com');
+        
+        COMMIT;        
+    """)
+
+    cur.execute("""
+        BEGIN;
+        
+        CREATE TABLE MAINTENANCE (
+            id INTEGER NOT NULL PRIMARY KEY
+          , service_date TEXT NOT NULL
+          , work_type_id INTEGER NOT NULL
+          , provider_id INTEGER NOT NULL DEFAULT(1)
+          , notes TEXT NOT NULL DEFAULT(' ')
+          , summary TEXT NOT NULL DEFAULT(' ')
+          , engine_hours REAL
+          , FOREIGN KEY(work_type_id) REFERENCES UPKEEP_ACTION(id) 
+            ON DELETE NO ACTION 
+            ON UPDATE NO ACTION 
+            FOREIGN KEY(provider_id) REFERENCES PROVIDER(id) 
+            ON DELETE NO ACTION 
+            ON UPDATE NO ACTION
+        );
+        
+        COMMIT;                
+     """)
