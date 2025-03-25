@@ -102,11 +102,7 @@ def main_event_loop(con, window):
 
         if event == '-MT_NEW-':
             new_rec = create_maintenance_record()
-
-            if new_rec:
-                print('Hi Mom!')
-
-    #               update_track_tab_entries(window, entries_in_db, values, con)
+            # could update fields with last record added
 
     window.close()
 

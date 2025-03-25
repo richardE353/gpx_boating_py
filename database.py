@@ -126,6 +126,7 @@ class MaintenanceRecordView:
 
         return self.service_date
 
+
 MAINTENANCE_VIEW_BASE_QRY = """
         SELECT MAINTENANCE.id, service_date, notes, summary, engine_hours, description as action, name as provider FROM MAINTENANCE
         INNER JOIN provider on maintenance.provider_id = provider.id
@@ -154,21 +155,6 @@ def get_entry_summaries(con: Connection) -> List[LogEntrySummary]:
     return_val = []
     for r in recs:
         summary = LogEntrySummary(*r)
-        return_val.append(summary)
-
-    return return_val
-
-
-def get_maintenance_dates(con: Connection) -> List[str]:
-    cur = con.cursor()
-
-    cmd = 'select distinct service_date from MAINTENANCE order by service_date'
-    res = cur.execute(cmd)
-    recs = res.fetchall()
-
-    return_val = []
-    for r in recs:
-        summary = str(*r)
         return_val.append(summary)
 
     return return_val
@@ -207,7 +193,8 @@ def get_providers(con: Connection) -> List[ProviderRecord]:
 def get_maintenance_views(con: Connection, action_desc: str) -> List[MaintenanceRecordView]:
     cur = con.cursor()
 
-    cmd = MAINTENANCE_VIEW_BASE_QRY + 'where UPKEEP_ACTION.description = ' + "'" + action_desc + "'" + ' order by service_date'
+    cmd = (MAINTENANCE_VIEW_BASE_QRY +
+           'where UPKEEP_ACTION.description = ' + "'" + action_desc + "'" + ' order by service_date desc')
     res = cur.execute(cmd)
     recs = res.fetchall()
 

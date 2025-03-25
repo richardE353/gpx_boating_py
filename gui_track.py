@@ -25,8 +25,7 @@ def nullable_float_as_str(fmt: str, v: float, units='') -> str:
         return str.format(fmt, v) + ' ' + units
 
 def create_track_tab(e_dict) -> Tab:
-    entry_strings = list(sorted(e_dict.keys()))
-
+    entry_strings = list(sorted(e_dict.keys(), reverse=True))
     stats_col = create_track_statistics_column()
 
     t_layout = [
@@ -67,7 +66,7 @@ def event_loop_for_process_gpx_file(match_year, return_val, segments_dict, windo
 
         if event == '-YEAR-':
             selected_year = values['-YEAR-']
-            window['-SELECT_FILE-'].update(values=list(filter(selected_year, get_data_files())), set_to_index=0)
+            window['-SELECT_FILE-'].update(values=list(filter(selected_year, get_data_files())).reverse(), set_to_index=0)
 
         if event == '-SELECT_FILE-':
             segments_dict = {}
@@ -102,7 +101,7 @@ def create_process_file_window(DEFAULT_YEAR, match_year):
     layout = [
         [sg.Text("Year:"), sg.InputText(DEFAULT_YEAR, key='-YEAR-', enable_events=True)],
         [sg.Text("File:"),
-         sg.Combo(list(filter(match_year, get_data_files())), key='-SELECT_FILE-', enable_events=True)],
+         sg.Combo(list(filter(match_year, get_data_files())).reverse(), key='-SELECT_FILE-', enable_events=True)],
         [sg.Text("Segments:"), sg.Combo([], key='-SELECT_SEG-', size=(60, 1))],
         [sg.Text("Title:"), sg.InputText(key='-TITLE-')],
         [sg.Text("Starting Loc:"), sg.InputText(key='-START-')],
