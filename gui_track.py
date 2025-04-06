@@ -18,11 +18,13 @@ from track_stats import get_segment_stats
 
 IMAGE_SIZE = (440, 440)
 
+
 def nullable_float_as_str(fmt: str, v: float, units='') -> str:
     if v is None:
         return "unknown"
     else:
         return str.format(fmt, v) + ' ' + units
+
 
 def create_track_tab(e_dict) -> Tab:
     entry_strings = list(sorted(e_dict.keys(), reverse=True))
@@ -66,7 +68,8 @@ def event_loop_for_process_gpx_file(match_year, return_val, segments_dict, windo
 
         if event == '-YEAR-':
             selected_year = values['-YEAR-']
-            window['-SELECT_FILE-'].update(values=list(filter(selected_year, get_data_files())).reverse(), set_to_index=0)
+            new_list = list(filter(selected_year, get_data_files()))
+            window['-SELECT_FILE-'].update(values=new_list, set_to_index=0)
 
         if event == '-SELECT_FILE-':
             segments_dict = {}
@@ -98,11 +101,17 @@ def event_loop_for_process_gpx_file(match_year, return_val, segments_dict, windo
 
 
 def create_process_file_window(DEFAULT_YEAR, match_year):
+    all_files = get_data_files()
+    candidate_files = list(filter(match_year, all_files))
+
+    if candidate_files == None:
+        candidate_files = []
+
     layout = [
         [sg.Text("Year:"), sg.InputText(DEFAULT_YEAR, key='-YEAR-', enable_events=True)],
         [sg.Text("File:"),
-         sg.Combo(list(filter(match_year, get_data_files())).reverse(), key='-SELECT_FILE-', enable_events=True)],
-        [sg.Text("Segments:"), sg.Combo([], key='-SELECT_SEG-', size=(60, 1))],
+         sg.Combo(values=candidate_files, key='-SELECT_FILE-', enable_events=True)],
+        [sg.Text("Segments:"), sg.Combo(values=[], key='-SELECT_SEG-', size=(60, 1))],
         [sg.Text("Title:"), sg.InputText(key='-TITLE-')],
         [sg.Text("Starting Loc:"), sg.InputText(key='-START-')],
         [sg.Text("Ending Loc:"), sg.InputText(key='-END-')],
@@ -178,7 +187,7 @@ def update_track_tab_entries(window, e_dict, values, con):
     update_track_stat_fields(selected_entry, selected_stats, window)
 
     window['-TT_CREW-'].update(value=selected_entry.crew)
-    window['-TT_NOTES-'].update(value=  selected_entry.notes.replace('\\n', os.linesep))
+    window['-TT_NOTES-'].update(value=selected_entry.notes.replace('\\n', os.linesep))
 
     update_selected_image(selected_entry, window)
 

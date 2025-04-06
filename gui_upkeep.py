@@ -1,3 +1,5 @@
+import os
+
 import common as rt_args
 import sqlite3
 from typing import Optional
@@ -5,7 +7,8 @@ from typing import Optional
 import FreeSimpleGUI as sg
 from FreeSimpleGUI import Tab
 
-from database import get_action_types, get_providers, MaintenanceRecord, add_to_database
+from database import get_action_types, get_providers, MaintenanceRecord, add_to_database, UpkeepActionRecord, \
+    ProviderRecord
 
 actions_dict: dict = {}
 providers_dict: dict = {}
@@ -24,11 +27,11 @@ def create_maintenance_tab(con) -> Tab:
          sg.Button('New', key='-MT_NEW-')],
         [sg.Text("Service Date:"),
          sg.Combo([], key='-MT_SVC_DATE-', size=(59, 1), enable_events=True)],
-        [sg.Text("Summary:"), sg.InputText(key='-MT_SUMMARY-', size=(63, 1))],
+        [sg.Text("Summary:"), sg.InputText(key='-MT_SUMMARY-', size=(63, 1), disabled=True)],
         [sg.Text("Provider:"),
-         sg.InputText(key='-MT_PROVIDER-', size=(50, 1)), ],
-        [sg.Text("Engine Hours:"), sg.InputText(key='-MT_EHOURS-', size=(25, 1))],
-        [sg.Text("Notes:"), sg.Multiline(key='-MT_NOTES-', size=(70, 10))]]
+         sg.InputText(key='-MT_PROVIDER-', size=(50, 1), disabled=True), ],
+        [sg.Text("Engine Hours:"), sg.InputText(key='-MT_EHOURS-', size=(25, 1), disabled=True)],
+        [sg.Text("Notes:"), sg.Multiline(key='-MT_NOTES-', size=(70, 10), disabled=True)]]
 
     return Tab(title='Maintenance', layout=t_layout)
 
@@ -94,7 +97,8 @@ def event_loop_for_new_maintenance_rec(return_val, window):
             new_rec = process_args(values)
 
             if new_rec:
-                window['-SAVE_STATUS-'].update(value='Added rec type: ' + values['-MW_SELECT_ACTION-'])
+                action_info = values['-MW_SELECT_ACTION-'] + ' on ' + values['-MW_SELECT_SVC_DATE-']
+                window['-SAVE_STATUS-'].update(value='Added rec type: ' + action_info)
                 return_val = new_rec
             else:
                 window['-SAVE_STATUS-'].update(value='Failed to add record.  No action taken')
@@ -119,4 +123,24 @@ def update_upkeep_tab_fields(a_rec, window):
     window['-MT_SUMMARY-'].update(value=a_rec.summary)
     window['-MT_PROVIDER-'].update(value=a_rec.provider)
     window['-MT_EHOURS-'].update(value=a_rec.engine_hours)
-    window['-MT_NOTES-'].update(value=a_rec.notes)
+    window['-MT_NOTES-'].update(value=a_rec.notes.replace('\\n', os.linesep))
+
+
+def get_action(anId: int) -> Optional[UpkeepActionRecord]:
+    global actions_dict
+
+    matches = list(filter(lambda a: a.id == anId, actions_dict.values()))
+    if len(matches) > 0:
+        return matches[0]
+
+    return None
+
+
+def get_provider(anId: int) -> Optional[ProviderRecord]:
+    global providers_dict
+
+    matches = list(filter(lambda p: p.id == anId, providers_dict.values()))
+    if len(matches) > 0:
+        return matches[0]
+
+    return None

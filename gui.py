@@ -14,7 +14,7 @@ def process_gpx_file() -> Optional[LogEntryRecord]:
     selected_year = DEFAULT_YEAR
 
     def match_year(candidate) -> bool:
-        return candidate.find(selected_year) > -1
+        return selected_year in candidate
 
     return_val = None
     segments_dict = {}
@@ -102,7 +102,15 @@ def main_event_loop(con, window):
 
         if event == '-MT_NEW-':
             new_rec = create_maintenance_record()
-            # could update fields with last record added
+
+            if new_rec:
+                # need to update records and stuff
+                window['-MT_SELECT_ACTION-'].update(value=get_action(new_rec.work_type_id).description)
+                window['-MT_SVC_DATE-'].update(value=new_rec.service_date)
+                window['-MT_SUMMARY-'].update(value=new_rec.summary)
+                window['-MT_PROVIDER-'].update(value=get_provider(new_rec.provider_id).name)
+                window['-MT_EHOURS-'].update(value=new_rec.engine_hours)
+                window['-MT_NOTES-'].update(value=new_rec.notes)
 
     window.close()
 

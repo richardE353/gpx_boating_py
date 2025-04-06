@@ -12,6 +12,8 @@ def get_data_files() :
     data_files = sorted([f.name for f in scanner if '.gpx' in f.name])
     scanner.close()
 
+    data_files.reverse()
+
     return data_files
 
 def get_file_loc(fn: str) -> str:
