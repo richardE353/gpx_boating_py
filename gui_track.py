@@ -6,6 +6,7 @@ from typing import Optional
 import FreeSimpleGUI as sg
 import gpxpy
 from FreeSimpleGUI import Tab
+from PIL import Image
 from PIL.Image import Resampling
 from gpxpy.gpx import GPXTrackSegment, GPX
 
@@ -17,7 +18,6 @@ from log_entry import create_log_entry, create_track_stats, persist
 from track_stats import get_segment_stats
 
 IMAGE_SIZE = (440, 440)
-
 
 def nullable_float_as_str(fmt: str, v: float, units='') -> str:
     if v is None:
@@ -104,7 +104,7 @@ def create_process_file_window(DEFAULT_YEAR, match_year):
     all_files = get_data_files()
     candidate_files = list(filter(match_year, all_files))
 
-    if candidate_files == None:
+    if candidate_files is None:
         candidate_files = []
 
     layout = [
@@ -138,17 +138,21 @@ def process_args(values: dict, seg: GPXTrackSegment) -> Optional[LogEntryRecord]
     return return_val
 
 
-def create_and_save_image(fn, seg):
-    img = segment_image(seg)
-    image_name = fn.replace('.gpx', '.png')
-    img.save(rt_args.get_file_loc(image_name))
+def create_and_save_image(file_name, seg) -> Optional[Image]:
+    try:
+        img = segment_image(seg)
+        image_name = file_name.replace('.gpx', '.png')
+        img.save(rt_args.get_file_loc(image_name))
 
-    return img
+        return img
+    except Exception:
+        print('failed to create and save image')
 
+    return None
 
 def persist_track_data(crew, end_loc, file_name, notes, seg, start_loc, title) -> Optional[LogEntryRecord]:
     con = sqlite3.connect(rt_args.DATABASE_LOC)
-    return_val = None
+
     try:
         stats = get_segment_stats(seg, 0.0)
 

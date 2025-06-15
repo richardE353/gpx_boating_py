@@ -42,7 +42,7 @@ def segment_as_line(s: GPXTrackSegment) -> Line:
 
 
 def segment_image(s: GPXTrackSegment) -> Image:
-    from staticmap import StaticMap, Line
+    from staticmap import StaticMap
 
     m = StaticMap(1000, 1000, 80)
     line = segment_as_line(s)
