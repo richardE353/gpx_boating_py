@@ -55,7 +55,7 @@ def main_window():
               [sg.Button('Exit')],
               ]
 
-    window = sg.Window('Boat Log', layout, resizable=False, font='default 12', size=(676, 700))
+    window = sg.Window('Boat Log', layout, resizable=False, font='default 12', size=(676, 740))
 
     con = sqlite3.connect(rt_args.DATABASE_LOC)
 
