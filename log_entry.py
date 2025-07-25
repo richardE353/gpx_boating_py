@@ -6,14 +6,19 @@ import gpxpy
 from gpxpy.gpx import GPX, GPXTrackSegment
 
 import common as rt_args
-from database import LogEntryRecord, TrackStats, add_to_database
+from database import LogEntryRecord, TrackStats, add_to_database, EngineHoursRecord
 from track_stats import get_speed_pct_to_ignore, get_segment_stats, SegmentStats
 
 
-def persist(entry: LogEntryRecord, stats: TrackStats, con: Connection):
+def persist(entry: LogEntryRecord, stats: TrackStats, hours_rec: Optional[EngineHoursRecord], con: Connection):
     add_to_database(entry.table_name(), entry.values_str(), con)
     add_to_database(stats.table_name(), stats.values_str(), con)
 
+    if hours_rec is not None:
+        try:
+            add_to_database(hours_rec.table_name(), hours_rec.values_str(), con)
+        except:
+            print('failed to persist hours')
 
 def input_log_entry(gpx_file_name: str, seg: GPXTrackSegment, speed_pct_ignore: float) -> Optional[LogEntryRecord]:
     title = input('Entry Title : ')
