@@ -29,6 +29,17 @@ class LogEntryRecord:
 
 
 @dataclass
+class LogEntryAndHoursView(LogEntryRecord):
+    hours: Optional[float]
+
+    def table_name(self) -> str:
+        return 'LOG_ENTRY_HOURS_VIEW'
+
+    def values_str(self) -> str:
+        return str(astuple(self))
+
+
+@dataclass
 class TrackStats:
     start_timestamp: int
     pct_top_spd_ignored: float
@@ -104,6 +115,18 @@ class MaintenanceRecord:
 
     def table_name(self) -> str:
         return 'MAINTENANCE'
+
+    def values_str(self) -> str:
+        base_str = str(astuple(self))
+        return base_str.replace('(None,', '(Null,').replace('None)', 'Null)')
+
+@dataclass
+class EngineHoursRecord:
+    date: str
+    hours: float
+
+    def table_name(self) -> str:
+        return 'ENGINE_HOURS'
 
     def values_str(self) -> str:
         base_str = str(astuple(self))
@@ -223,6 +246,14 @@ def select_log_entry(an_id: int, con: Connection) -> Optional[LogEntryRecord]:
     return LogEntryRecord(*a_rec)
 
 
+def select_log_entry_and_hours(an_id: int, con: Connection) -> Optional[LogEntryAndHoursView]:
+    cur = con.cursor()
+    res = cur.execute("select * from LOG_ENTRY_HOURS_VIEW WHERE start_timestamp=" + str(an_id))
+    a_rec = res.fetchone()
+
+    return LogEntryAndHoursView(*a_rec)
+
+
 def select_log_entry_stats(an_id: int, con: Connection) -> Optional[TrackStats]:
     cur = con.cursor()
     res = cur.execute("select * from TRACK_STATS WHERE start_timestamp=" + str(an_id))
@@ -279,10 +310,33 @@ def create_database():
         ON LOG_ENTRY.start_timestamp = TRACK_STATS.start_timestamp"""
                 )
 
+    cur.execute("""
+        CREATE VIEW LOG_ENTRY_HOURS_VIEW AS
+        select L.*, E.hours from LOG_ENTRY as L 
+        left outer join engine_hours as E
+        on L.date = E.date """
+                )
+
     con.close()
 
     create_maintenance_tables()
+    create_engine_hours_table()
 
+def create_engine_hours_table():
+    con = sqlite3.connect(rt_args.DATABASE_LOC)
+    cur = con.cursor()
+
+    cur.execute("""
+        BEGIN;
+
+        CREATE TABLE ENGINE_HOURS (
+            date TEXT PRIMARY KEY
+            , hours REAL
+            , UNIQUE(date)
+        );
+
+        COMMIT;
+    """)
 
 def create_maintenance_tables():
     con = sqlite3.connect(rt_args.DATABASE_LOC)
