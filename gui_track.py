@@ -12,7 +12,8 @@ from gpxpy.gpx import GPXTrackSegment, GPX
 
 import common as rt_args
 from common import get_data_files
-from database import LogEntryRecord, select_log_entry, select_log_entry_stats
+from database import LogEntryRecord, select_log_entry, select_log_entry_stats, EngineHoursRecord, add_to_database, \
+    LogEntryAndHoursView, select_log_entry_and_hours
 from images import segment_image, load_image
 from log_entry import create_log_entry, create_track_stats, persist
 from track_stats import get_segment_stats
@@ -36,6 +37,7 @@ def create_track_tab(e_dict) -> Tab:
         [sg.Text("Title:"), sg.InputText(key='-TT_TITLE-')],
         [sg.Text("Starting Loc:"), sg.InputText(size=(20, 1), key='-TT_START-'), sg.Text("Ending Loc:"),
          sg.InputText(size=(20, 1), key='-TT_END-')],
+        [sg.Text("Engine Hours:"), sg.InputText(size=(20, 1), key='-TT_ENGINE_HOURS-')],
         [sg.Text("Crew:"), sg.InputText(key='-TT_CREW-')],
         [sg.Text("Notes:"), sg.Multiline(key='-TT_NOTES-', size=(70, 4))],
         [stats_col, sg.Image(key="-TT_TRACK_IMAGE-", size=IMAGE_SIZE)]]
@@ -86,6 +88,7 @@ def event_loop_for_process_gpx_file(match_year, return_val, segments_dict, windo
             window['-END-'].update(value='')
             window['-CREW-'].update(value='')
             window['-NOTES-'].update(value='')
+            window['-ENGINE_HOURS-'].update(value='')
             window['-SAVE_STATUS-'].update(value='')
 
         if event == 'Save':
@@ -115,6 +118,7 @@ def create_process_file_window(DEFAULT_YEAR, match_year):
         [sg.Text("Title:"), sg.InputText(key='-TITLE-')],
         [sg.Text("Starting Loc:"), sg.InputText(key='-START-')],
         [sg.Text("Ending Loc:"), sg.InputText(key='-END-')],
+        [sg.Text("Engine Hours:"), sg.InputText(size=(20, 1), key='-ENGINE_HOURS-')],
         [sg.Text("Crew:"), sg.InputText(key='-CREW-')],
         [sg.Text("Notes:"), sg.Multiline(key='-NOTES-', size=(70, 4))],
         [sg.Button('Save'), sg.Button('Exit', key='-EXIT-'), sg.Text('', key='-SAVE_STATUS-')]]
@@ -123,15 +127,21 @@ def create_process_file_window(DEFAULT_YEAR, match_year):
     return window
 
 
-def process_args(values: dict, seg: GPXTrackSegment) -> Optional[LogEntryRecord]:
+def process_args(values: dict, seg: GPXTrackSegment) -> Optional[LogEntryAndHoursView]:
     file_name = values['-SELECT_FILE-']
     title = values['-TITLE-']
     start_loc = values['-START-']
     end_loc = values['-END-']
     crew = values['-CREW-']
     notes = values['-NOTES-']
+    hours = values['-ENGINE_HOURS-'].strip()
 
-    return_val = persist_track_data(crew, end_loc, file_name, notes, seg, start_loc, title)
+    if len(hours) > 0:
+        f_hours = float(hours)
+    else:
+        f_hours = None
+
+    return_val = persist_track_data(crew, end_loc, file_name, notes, seg, start_loc, title, f_hours)
 
     create_and_save_image(file_name, seg)
 
@@ -150,17 +160,22 @@ def create_and_save_image(file_name, seg) -> Optional[Image]:
 
     return None
 
-def persist_track_data(crew, end_loc, file_name, notes, seg, start_loc, title) -> Optional[LogEntryRecord]:
+def persist_track_data(crew, end_loc, file_name, notes, seg, start_loc, title, hours) -> Optional[LogEntryAndHoursView]:
     con = sqlite3.connect(rt_args.DATABASE_LOC)
 
     try:
         stats = get_segment_stats(seg, 0.0)
 
-        new_entry = create_log_entry(file_name, seg, title, start_loc, end_loc, crew, notes)
-        trk_stats = create_track_stats(new_entry, stats, 0.0)
+        l_e = create_log_entry(file_name, seg, title, start_loc, end_loc, crew, notes)
+        trk_stats = create_track_stats(l_e, stats, 0.0)
 
-        persist(new_entry, trk_stats, con)
-        return_val = new_entry
+        hours_rec = None
+
+        if hours is not None:
+            hours_rec = EngineHoursRecord(l_e.date, hours)
+
+        persist(l_e, trk_stats, hours_rec, con)
+        return_val = LogEntryAndHoursView(l_e.start_timestamp, title, l_e.date, crew, file_name, start_loc, end_loc, notes, hours)
     finally:
         con.close()
 
@@ -185,13 +200,14 @@ def extract_segments(fn):
 def update_track_tab_entries(window, e_dict, values, con):
     selected_id = e_dict[values['-TT_SELECT_ENTRY-']].start_timestamp
 
-    selected_entry = select_log_entry(selected_id, con)
+    selected_entry = select_log_entry_and_hours(selected_id, con)
     selected_stats = select_log_entry_stats(selected_id, con)
 
     update_track_stat_fields(selected_entry, selected_stats, window)
 
     window['-TT_CREW-'].update(value=selected_entry.crew)
     window['-TT_NOTES-'].update(value=selected_entry.notes.replace('\\n', os.linesep))
+    window['-TT_ENGINE_HOURS-'].update(value=nullable_float_as_str('{:.1f}', selected_entry.hours))
 
     update_selected_image(selected_entry, window)
 
