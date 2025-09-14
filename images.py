@@ -1,7 +1,7 @@
 import os
 from typing import Tuple, Optional
 from PIL import Image
-from staticmap import Line
+from staticmap3 import Line
 from gpxpy.gpx import GPXTrackSegment, GPX
 
 import common as rt_args
@@ -42,7 +42,7 @@ def segment_as_line(s: GPXTrackSegment) -> Line:
 
 
 def segment_image(s: GPXTrackSegment) -> Image:
-    from staticmap import StaticMap
+    from staticmap3 import StaticMap
 
     m = StaticMap(1000, 1000, 80)
     line = segment_as_line(s)
