@@ -8,7 +8,7 @@ import FreeSimpleGUI as sg
 from FreeSimpleGUI import Tab
 
 from database import get_action_types, get_providers, MaintenanceRecord, add_to_database, UpkeepActionRecord, \
-    ProviderRecord
+    ProviderRecord, EngineHoursRecord
 
 actions_dict: dict = {}
 providers_dict: dict = {}
@@ -75,9 +75,17 @@ def process_args(values: dict) -> Optional[MaintenanceRecord]:
     new_entry = MaintenanceRecord(None, svc_date, action.id, provider.id, notes, summary, engine_hours)
 
     con = sqlite3.connect(rt_args.DATABASE_LOC)
-    return_val = None
+
     try:
         add_to_database(new_entry.table_name(), new_entry.values_str(), con)
+
+        if engine_hours is not None:
+            try:
+                hours_rec = EngineHoursRecord(svc_date, engine_hours)
+                add_to_database(hours_rec.table_name(), hours_rec.values_str(), con)
+            except:
+                print('failed to persist hours')
+
         return_val = new_entry
     finally:
         con.close()
