@@ -8,7 +8,7 @@ import FreeSimpleGUI as sg
 from FreeSimpleGUI import Tab
 
 from database import get_action_types, get_providers, MaintenanceRecord, add_to_database, UpkeepActionRecord, \
-    ProviderRecord, EngineHoursRecord
+    ProviderRecord, EngineHoursRecord, MaintenanceRecordView
 
 actions_dict: dict = {}
 providers_dict: dict = {}
@@ -60,7 +60,7 @@ def create_maintenance_window():
     return window
 
 
-def process_args(values: dict) -> Optional[MaintenanceRecord]:
+def process_args(values: dict) -> Optional[MaintenanceRecordView]:
     global actions_dict
     global providers_dict
 
@@ -72,7 +72,7 @@ def process_args(values: dict) -> Optional[MaintenanceRecord]:
     notes = values['-MW_NOTES-']
     summary = values['-MW_SUMMARY-']
 
-    new_entry = MaintenanceRecord(None, svc_date, action.id, provider.id, notes, summary, engine_hours)
+    new_entry = MaintenanceRecord(None, svc_date, action.id, provider.id, notes, summary)
 
     con = sqlite3.connect(rt_args.DATABASE_LOC)
 
@@ -86,7 +86,15 @@ def process_args(values: dict) -> Optional[MaintenanceRecord]:
             except:
                 print('failed to persist hours')
 
-        return_val = new_entry
+        return_val = MaintenanceRecordView(None,
+                                           svc_date,
+                                           notes,
+                                           summary,
+                                           engine_hours,
+                                           action.description,
+                                           provider.name,
+                                           action.id,
+                                           provider.id)
     finally:
         con.close()
 
@@ -113,7 +121,7 @@ def event_loop_for_new_maintenance_rec(return_val, window):
     return return_val
 
 
-def update_upkeep_tab_entries(window, maintenance_recs, values, con):
+def update_upkeep_tab_entries(window, maintenance_recs):
     window['-MT_SVC_DATE-'].update(values=list(map(lambda mr: mr.info(), maintenance_recs)))
 
     if len(maintenance_recs) == 1:
@@ -130,24 +138,29 @@ def update_upkeep_tab_entries(window, maintenance_recs, values, con):
 def update_upkeep_tab_fields(a_rec, window):
     window['-MT_SUMMARY-'].update(value=a_rec.summary)
     window['-MT_PROVIDER-'].update(value=a_rec.provider)
-    window['-MT_EHOURS-'].update(value=a_rec.engine_hours)
+
+    if a_rec.engine_hours == None:
+        window['-MT_EHOURS-'].update(value='')
+    else:
+        window['-MT_EHOURS-'].update(value=a_rec.engine_hours)
+
     window['-MT_NOTES-'].update(value=a_rec.notes.replace('\\n', os.linesep))
 
 
-def get_action(anId: int) -> Optional[UpkeepActionRecord]:
+def get_action(an_id: int) -> Optional[UpkeepActionRecord]:
     global actions_dict
 
-    matches = list(filter(lambda a: a.id == anId, actions_dict.values()))
+    matches = list(filter(lambda a: a.id == an_id, actions_dict.values()))
     if len(matches) > 0:
         return matches[0]
 
     return None
 
 
-def get_provider(anId: int) -> Optional[ProviderRecord]:
+def get_provider(an_id: int) -> Optional[ProviderRecord]:
     global providers_dict
 
-    matches = list(filter(lambda p: p.id == anId, providers_dict.values()))
+    matches = list(filter(lambda p: p.id == an_id, providers_dict.values()))
     if len(matches) > 0:
         return matches[0]
 

@@ -111,7 +111,6 @@ class MaintenanceRecord:
     provider_id: int
     notes: str
     summary: str
-    engine_hours: Optional[float]
 
     def table_name(self) -> str:
         return 'MAINTENANCE'
@@ -142,6 +141,8 @@ class MaintenanceRecordView:
     engine_hours: Optional[float]
     action: str
     provider: str
+    work_type_id: int
+    provider_id: int
 
     def info(self) -> str:
         if self.action == 'Project':
@@ -151,9 +152,12 @@ class MaintenanceRecordView:
 
 
 MAINTENANCE_VIEW_BASE_QRY = """
-        SELECT MAINTENANCE.id, service_date, notes, summary, engine_hours, description as action, name as provider FROM MAINTENANCE
-        INNER JOIN provider on maintenance.provider_id = provider.id
+        SELECT MAINTENANCE.id, service_date, notes, summary, hours as engine_hours, description as action, 
+            name as provider , UPKEEP_ACTION.id as work_type_id, provider.id as provider_id
+            FROM MAINTENANCE
+        INNER JOIN provider on MAINTENANCE.provider_id = provider.id
         INNER JOIN UPKEEP_ACTION on MAINTENANCE.work_type_id = UPKEEP_ACTION.id
+        LEFT OUTER JOIN ENGINE_HOURS on MAINTENANCE.service_date = ENGINE_HOURS.date
     """
 
 
@@ -358,7 +362,8 @@ def create_maintenance_tables():
         insert into UPKEEP_ACTION values (6, 'Touch up varnish');
         insert into UPKEEP_ACTION values (7, 'Bottom paint');
         insert into UPKEEP_ACTION values (8, 'Project');
-
+        insert into UPKEEP_ACTION values (9, 'Change engine coolant');
+        
         COMMIT;   
     """)
 
@@ -388,7 +393,6 @@ def create_maintenance_tables():
           , provider_id INTEGER NOT NULL DEFAULT(1)
           , notes TEXT NOT NULL DEFAULT(' ')
           , summary TEXT NOT NULL DEFAULT(' ')
-          , engine_hours REAL
           , FOREIGN KEY(work_type_id) REFERENCES UPKEEP_ACTION(id) 
             ON DELETE NO ACTION 
             ON UPDATE NO ACTION 

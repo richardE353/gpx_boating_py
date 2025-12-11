@@ -1,6 +1,6 @@
 from FreeSimpleGUI import TabGroup
 
-from database import get_entry_summaries, create_database, LogEntryRecord, get_maintenance_views
+from database import get_entry_summaries, create_database, LogEntryRecord, get_maintenance_views, MaintenanceRecordView
 from gui_track import create_track_tab, event_loop_for_process_gpx_file, create_process_file_window, \
     update_track_tab_entries
 
@@ -29,7 +29,7 @@ def process_gpx_file() -> Optional[LogEntryRecord]:
     return return_val
 
 
-def create_maintenance_record() -> Optional[MaintenanceRecord]:
+def create_maintenance_record() -> Optional[MaintenanceRecordView]:
     return_val = None
 
     window = create_maintenance_window()
@@ -90,7 +90,7 @@ def main_event_loop(con, window):
 
         if event == '-MT_SELECT_ACTION-':
             view_recs = get_maintenance_views(con, values['-MT_SELECT_ACTION-'])
-            update_upkeep_tab_entries(window, view_recs, values, con)
+            update_upkeep_tab_entries(window, view_recs)
 
         if event == '-MT_SVC_DATE-':
             view_recs = get_maintenance_views(con, values['-MT_SELECT_ACTION-'])
