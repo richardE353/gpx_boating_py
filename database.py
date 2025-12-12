@@ -160,6 +160,14 @@ MAINTENANCE_VIEW_BASE_QRY = """
         LEFT OUTER JOIN ENGINE_HOURS on MAINTENANCE.service_date = ENGINE_HOURS.date
     """
 
+MAINTENANCE_EXPORT_QRY = """
+        SELECT service_date, ifnull(hours, '') as engine_hours, description as action, name as provider, summary, notes
+        FROM MAINTENANCE
+            INNER JOIN provider on MAINTENANCE.provider_id = provider.id
+            INNER JOIN UPKEEP_ACTION on MAINTENANCE.work_type_id = UPKEEP_ACTION.id
+            LEFT OUTER JOIN ENGINE_HOURS on MAINTENANCE.service_date = ENGINE_HOURS.date
+        ORDER BY service_date, action
+    """
 
 def add_to_database(tbl_name: str, values_str: str, con: Connection):
     stmt = "INSERT INTO " + tbl_name + " VALUES " + values_str
